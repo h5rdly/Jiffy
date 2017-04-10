@@ -1,7 +1,5 @@
-'''   '''
 ##Imports-------------------Imports--------------------------------
 #Compatibility
-#using u'X:' for now to entice unicode.  #, nested_scopes #, unicode_literals  
 from __future__ import print_function  #for testing
 
 #move to a config filedown the line
@@ -9,19 +7,17 @@ DB='Jiffy_DB'
 
 #Basics
 import os                #path, startfile, name     
-import sys               #platform, executable, getdefaultencoding, version
+import sys               #platform, executable, version
 from time import time, ctime, sleep
-from collections import namedtuple #, defaultdict, orderedDict
+from collections import namedtuple 
 
 #Concurrency
-#from threading import Thread
 try:
     import _thread as thread
     from queue import Queue
 except:
     import thread
     from Queue import Queue
-#import multiprocessing as mp      #faster dictionary lookups?
 
 #Opening files with defalt app:
 try:   
