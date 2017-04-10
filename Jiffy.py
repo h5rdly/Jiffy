@@ -1,10 +1,10 @@
-##Imports-------------------Imports--------------------------------
 #Compatibility
 from __future__ import print_function  #for testing
 
 #move to a config filedown the line
 DB='Jiffy_DB'
 
+##Imports-------------------Imports--------------------------------
 #Basics
 import os                #path, startfile, name     
 import sys               #platform, executable, version
