@@ -9,11 +9,13 @@ Jiffy caches information about files and folders on your hard disk to allow fast
 scandir is currently required on Python < 3.5 (Part of the standard library as of 3.5):
 'pip install scandir'
 
-### Platforms:
-Jiffy uses generic standard library Python functions for almost all its operations. I suspect/hope it runs almost anywhere Python can be installed.
 
 ### Tested on: 
 Windows 8.1/ 10, Linux Mint 18.1 Under: Python 2.7/3.5
+
+
+### Other Platforms:
+Jiffy uses generic standard library Python functions for almost all its operations (except opening a file with its default app). I suspect/hope it runs almost anywhere Python can be installed. Feedback is welcome.
 
 
 ### Usage:
