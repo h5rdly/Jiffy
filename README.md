@@ -6,11 +6,11 @@ Jiffy caches information about files and folders on your hard disk to allow fast
 
 
 ### Requirements: 
-- scandir is currently required on Python < 3.5 (Part of the standard library as of 3.5):
+- scandir is currently required on **Python < 3.5** (Part of the standard library as of 3.5):
 
 `pip install scandir`
 
-- Python 3 ditched hashdb, so, on Windows, it only supports dumbdbm. dumbdbm sucks, so Jiffy tries to use a better Python based key-value storage on Py3/Win - the very nice [semidbm](https://github.com/jamesls/semidbm/tree/master/semidbm):
+- Python 3 ditched hashdb, so, on Windows, it only supports dumbdbm. dumbdbm sucks, so Jiffy tries to use a better Python based key-value storage on **Python 3/Windows** - the very nice [semidbm](https://github.com/jamesls/semidbm/tree/master/semidbm):
 
 `pip install semidbm`
 
@@ -33,6 +33,9 @@ Jiffy uses generic standard library Python functions for almost all its operatio
 ### Windows Demo:
 ![](https://github.com/h5rdly/Jiffy/blob/master/WinDemo.gif)
 
+### Linux Demo:
+coming up, having some trouble with Peek
+
 ### To do:
 -	Filetype icons on the various platforms. 
 -	~~Unicode support~~
@@ -50,5 +53,5 @@ Jiffy uses generic standard library Python functions for almost all its operatio
 
 
 
-##### The code in this repository is in the public domain
+#### The code in this repository is in the public domain.
 
