@@ -35,13 +35,13 @@ Jiffy uses generic standard library Python functions for almost all its operatio
 
 ### To do:
 -	Filetype icons on the various platforms. 
--	Unicode support (check)
+-	~~Unicode support~~
 -	Use the USN journal for updates on Windows/NTFS
 -	Faster dictionary lookups 
 -	The BIG feature
 -	Add a slicker GUI with Kivy, tkinter as a backfall
 -	Check LMDB as an alternative storage.
--	Figure out how to mark out lines on Github
+-	~~Figure out how to mark out lines on Github~~
      
 
 ### Call for action:
@@ -50,5 +50,5 @@ Jiffy uses generic standard library Python functions for almost all its operatio
 
 
 
-- The code in this repository is in the public domain
+##### The code in this repository is in the public domain
 
