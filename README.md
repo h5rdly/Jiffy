@@ -7,9 +7,11 @@ Jiffy caches information about files and folders on your hard disk to allow fast
 
 ### Requirements: 
 - scandir is currently required on Python < 3.5 (Part of the standard library as of 3.5):
+
 `pip install scandir`
 
 - Python 3 ditched hashdb, so, on Windows, it only supports dumbdbm. dumbdbm sucks, so Jiffy tries to use a better Python based key-value storage on Py3/Win - the very nice [semidbm](https://github.com/jamesls/semidbm/tree/master/semidbm):
+
 `pip install semidbm`
 
 
@@ -46,4 +48,7 @@ Jiffy uses generic standard library Python functions for almost all its operatio
 -	Lookups take a few seconds for sparse results, I would like them to have real time speed. Feel free to pitch in or offer any assistance.
 -	Ideas for speeding up the database creation, preferably in a cross-platfrom way, are quite welcome. 
 
+
+
+- The code in this repository is in the public domain
 
