@@ -53,5 +53,5 @@ coming up, having some trouble with Peek
 
 
 
-#### The code in this repository is in the public domain.
+The code in this repository is in the public domain.
 
