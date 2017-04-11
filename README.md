@@ -6,7 +6,7 @@ Jiffy caches information about files and folders on your hard disk to allow fast
 
 
 ### Requirements: 
-- scandir is currently required on **Python < 3.5** (Part of the standard library as of 3.5):
+- [scandir](https://github.com/benhoyt/scandir) is currently required on **Python < 3.5** (Part of the standard library as of 3.5):
 
 `pip install scandir`
 
