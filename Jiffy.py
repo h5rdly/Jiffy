@@ -785,8 +785,13 @@ class SearchBox(Frame):
 def allrightythen():
     '''Windows arrangements, load GUI'''
     
-    #class.scale_display()
-    windll.shcore.SetProcessDpiAwareness(1)
+    if 'win' in sys.platform:
+        try: 
+            #Enable DPI awareness on newer versions of Windows
+            windll.shcore.SetProcessDpiAwareness(1)
+        except:
+            pass  #well, shit.
+        
     sb=SearchBox()
     sb.pack()
     mainloop()
