@@ -10,7 +10,7 @@ Jiffy caches information about files and folders on your hard disk to allow fast
 
 `pip install scandir`
 
-- Python 3 ditched hashdb, so, on Windows, it only supports dumbdbm. dumbdbm sucks, so Jiffy tries to use a better Python based key-value storage on **Python 3/Windows** - the very nice [semidbm](https://github.com/jamesls/semidbm/tree/master/semidbm):
+- Python 3 ditched bsddb, so, on Windows, it only supports dumbdbm. dumbdbm sucks, so Jiffy tries to use a better Python based key-value storage on **Python 3/Windows** - the very nice [semidbm](https://github.com/jamesls/semidbm/tree/master/semidbm):
 
 `pip install semidbm`
 
@@ -25,7 +25,7 @@ Jiffy uses generic standard library Python functions for almost all its operatio
 
 ### Usage:
 -	Hit F5 to generate the database for the first time. Update it with F5.
--	Type in words, parts of words, extensions etc. separated by spaces for lookups.
+-	Type in names, parts of names, extensions etc. separated by spaces for lookups.
 -	Double click on press Enter after choosing the desired file to open it.
 -	You can adjust the font size with Ctrl + +/- , or Ctrl + scrollwheel.
 -	Alt-F4 to exit.
