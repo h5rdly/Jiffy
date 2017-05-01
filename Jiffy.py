@@ -1,10 +1,12 @@
+# -*- encoding='utf-8' -*-
+
+##Imports-------------------Imports--------------------------------
 #Compatibility
 from __future__ import print_function  #for testing
 
 #move to a config filedown the line
 DB='Jiffy_DB'
 
-##Imports-------------------Imports--------------------------------
 #Basics
 import os                #path, startfile, name     
 import sys               #platform, executable, version
@@ -18,6 +20,7 @@ try:
 except:
     import thread
     from Queue import Queue
+#import multiprocessing as mp      #faster dictionary lookups?
 
 #Opening files with defalt app:
 try:   
@@ -26,8 +29,11 @@ except:
     import subprocess as sp
    
 #Persistence / storage related
+#from whichdb import whichdb
+#import ldbm as dbm
+
 try:
-    import anydbm as dbm #Python 2, with some luck we get bsddb/dbhash
+    import anydbm as dbm   #Python 2, with some luck we get bsddb/dbhash
 except:
     if not 'win' in sys.platform:
         import dbm 
@@ -43,11 +49,10 @@ finally:
     try:
         from dbm import whichdb
     except:
-         from whichdb import whichdb        
+         from whichdb import whichdb      
        
 #NTFS snooping, getting admin on Windows, DPI workarounds, Filetype icons
 from ctypes import *             
-#from ctypes.wintypes import 
 
 #GUI
 try: 
@@ -61,13 +66,13 @@ except:
     
 #Scanning the filesystem		
 try:
-    from os import scandir as sd        #on Python 3.5+    
+    from os import scandir        #on Python 3.5+    
 except:
     try:
-        from scandir import scandir as sd
+        from scandir import scandir
     except:
-        pass
         #Add option to use shitpa listdir as a last resort
+        pass
     else:
         from scandir import walk        #for speed comparisons
 else:    
@@ -87,7 +92,13 @@ if not Testing:
     
 else:  
     from pympler.asizeof import asizeof
-    #import pdir2, fire, better_exceptions
+    import pdir as dir
+    import fire, better_exceptions
+    try:
+        from importlib import reload
+    except:
+        #seems to exist on 2.7 even though undocumented
+        from imp import reload 
     
     Tests=Testnames
     
@@ -118,10 +129,11 @@ SCORCH=False
 ENCODING='utf-8'
 
 ##Logic/Algo--------------------Logic/Algo--------------------------
-'''In use:  [drives] GetDrives() - return drive list to iterate 
+'''In use:  
+            [drives] GetDrives() - return drive list to iterate over
 
             func() StartFunc() - return a platform specific function to call 
-                                 the default filetype app 
+                                 the default filetype app on doubleclick
                                  
             queue.put((dbm, [unsearched])) RecursiveCreateDict(drives, dbqueue=None) - 
                 recurse all drives and make a dictionary where values are paths, 
@@ -147,7 +159,6 @@ def GetDrives():
     exists=os.path.exists
     drives=[u'/']        
     if 'win' in sys.platform:
-        #attempt unicode via + u':\\', currently ascii
         drives.extend((chr(a)+ u':\\' for a in range(ord('A'), ord('Z')) if exists(chr(a)+':')))
         try:
             drives.remove(u'C:\\')  # '/' and 'C:/' represent the same drive, but '/' allows full traversal
@@ -160,107 +171,137 @@ def StartFunc():
 
     if 'win' in sys.platform:
         func=os.startfile     #an API call also an option
-    else:                     #Linux, FreeBSD, OpenBSD, MacOSX
+    else:   
+        #Linux, FreeBSD, OpenBSD, MacOSX
         open_command='open' if 'darwin' in sys.platform else 'xdg-open'   #os.name=='posix'
-        func=lambda filepath: sp.Popen((open_command, filepath)) #check on linux
+        func=lambda filepath: sp.Popen((open_command, filepath))
             
     return func    
 
-def RecursiveCreateDict(drives, queue=None):
-    '''Recursive implementation of generating the file dictionary, currently in use'''
-
+def RecursiveCreateDict(drives, queue=None, dbm=None):
+    '''Recursive implementation of generating the file dictionary, currently in use
+    A stack based implementation is in stash.py. I tried to avoid function calls
+    for the speedup,so this one is a bit longer'''
+    
     fdict={}
     fdict['**']=''     # "Null key" referral, currently not in use
     unsearched=[]
     
     def RecursiveAdd(top):      
+        
+        #Helper function to set up the size and date strings in desired format
+        def pretty_size_date(size, date):
+            '''Return formatted size and date strings'''
+            
+            #Size
+            for size_unit in u'BKMGT':
+                if size < 1024:
+                    break
+                size/=1024.         
+            
+            if size_unit == u'G' or size_unit == u'T':
+               #cut excess precision
+               size=FloatPrecision(size, Gb_Tb_PRECISION) 
+            else:  
+                #M, K, B
+                size=int(size) if size-int(size)<0.5 else int(size+1)
+                        
+            fsize= str(size)+' '+ size_unit + u''
+            
+            #Date
+            '''ctime style: 'Mon Oct 26 16:33:26 2015'   
+            desired style: '26-Oct-15|16:33' '''  
+            #A alternatively this can be extracted later 
+            
+            try:
+                # + works (~x10) faster than join() in my timeits
+                fdate= date[2] + u'-' + date[1] + u'-' + date[4][2:] + u' | ' + date[3][:-3] +u''
+            except:
+                #In case st_mtime returned a negative timestamp (None passed)
+                fdate='Error getting date'
+            
+            return fsize, fdate
+        
+        #Prepping dir contents
         try:
-            contents=sd(top)  #scandir the path
+            contents=scandir(top)  #scandir the path
         except OSError:
             unsearched.append(top)
-            return
+            return 0 
         
+        #Getting 'C:\' back as the prefix on Windows
         if 'win' in sys.platform and top[0]==u'/':
             #Get the boys back home
             top=u'C:\\'+top[1:]
         
+        #Will be calculated recursively
+        top_size=0    
+       
+        #Iterating over dir contents
         for scandir_item in contents:
-            if scandir_item.is_symlink():    #symlinks make recursion sad
-                continue
+            if scandir_item.is_symlink():    
+                #symlinks make recursion sad
+                continue                     #add symlink treatment later
                 
-            #getting data for dictionary. 'f' for file or folder
-            fname=scandir_item.name +u''    #.decode('utf-8') 
-            fpath=top + u'' 
             try:
-                fdate=ctime(scandir_item.stat().st_mtime).split() 
+                date=ctime(scandir_item.stat().st_mtime).split() 
             except:
                 #On Python 3.5, Win8.1, had an issue with a negative time on st_mtime
+                #Substituted for an error notification when parsed
+                date=None 
+                
                 if Tests.ctime_issue_windows_py35:
                     print (fpath + fname, scandir_item.stat().st_mtime)
-                #Substituted for an error notification when parsed
-                fdate=None 
-                
-            '''ctime style: 'Mon Oct 26 16:33:26 2015'   
-            desired style: '26-Oct-15|16:33' '''  
-            #A alternatively this can be extracted later  
-            try:
-                # + works (~x10) faster than join() in my timeits
-                fdate= fdate[2] + u'-' + fdate[1] + u'-' + fdate[4][2:] + u' | ' + fdate[3][:-3] +u''
-            except:
-                #In case st_mtime returned a negative timestamp
-                fdate='Error getting date'
                            
+            fname=scandir_item.name + u''
+            
             if not scandir_item.is_dir():
-                #prettying up the size parameter for files
-                size_value=scandir_item.stat().st_size
-                for size_unit in u'BKMGT':
-                    if size_value < 1024:
-                        break
-                    size_value/=1024.      
-                if size_unit == u'G' or size_unit == u'T':
-                           size_value=FloatPrecision(size_value, Gb_Tb_PRECISION) 
-                else:  #M, K, B
-                    size_value=int(size_value)
-                            
-                fsize= str(size_value)+' '+ size_unit + u''
-                
-                #Key contains the name, size and date
-                key=fname + ' * '+ fsize + ' * ' + fdate + u''
-                
-                #Value is the path to file/folder
-                finfo_string= fpath   
-                
-                if fname not in fdict:               
-                    fdict[key.encode(ENCODING)]=finfo_string.encode(ENCODING)
-                else:
-                    key=fname + '[1]' +' * '+ fsize + ' * ' + fdate + u''
-                    fdict[key.encode(ENCODING)]=finfo_string.encode(ENCODING)
+                #File specific treatment
+                size=scandir_item.stat().st_size
+            else:     
+                #Folder specific treatment
+                fname='['+fname+']'
+                if not scandir_item.is_symlink():      #remove one of the checks 
+                    size=RecursiveAdd(scandir_item.path)  #Aww shit! 
                     
-            else:                         
-                fsize= u'0 D'
-                key='['+fname+']'+' * '+fsize + ' * ' +fdate + u''
-                finfo_string= fpath
+            top_size+= size
+                   
+            fsize, fdate=pretty_size_date(size, date)
+            fpath=top + u''
+            
+            key=fname + ' * ' +fsize + ' * ' +fdate + u''
+            value= fpath
+            if key in fdict:
+                '''contingency in case two  same named same sized files 
+                were modified in the same minute'''      
+                key=fname + '[1]' + ' * ' +fsize + ' * ' +fdate + u''
                 
-                if not scandir_item.is_symlink():
-                    if fname not in fdict:               
-                        fdict[key.encode(ENCODING)]=finfo_string.encode(ENCODING)
-                    else:
-                        key='['+fname+']' + '[1]' +' * '+ fsize + ' * ' + fdate + u''
-                        fdict[key.encode(ENCODING)]=finfo_string.encode(ENCODING)
-                RecursiveAdd(scandir_item.path)  
-        '''half and half approach - takes less time than updating dbdict in the inner loops
-           but twice as long as in memory'''
-        #dbdict.update(fdict)
-        #fdict.clear()
+            fdict[key.encode(ENCODING)]=value.encode(ENCODING)  
+          
+        return top_size    
+        
+        '''  
+        so far:
+                      
+         def RecursiveAdd(top):  
+        
+            for scandir_item in contents:
+            
+                if not scandir_item.is_dir():
+                    
+                else:
+                    #Folder specific treatment
+                    RecursiveAdd()
+                    
+            return top_size
+       '''     
+   
         if Tests.per_dir_recursion:
             print ("Done recursing on:", top) 
-        
-    def SerialWalk():
-        for drive in drives:
-            RecursiveAdd(drive)
+   
         
     def ThreadedWalk():
-        '''Threaded variant, worked slower for me'''
+        '''Threaded variant using Threading, worked slower for me, ditched'''
     
         threads=[]    
         for drive in drives:
@@ -270,80 +311,45 @@ def RecursiveCreateDict(drives, queue=None):
         for drive_thread in threads: 
             drive_thread.join()
     
-    #SerialWalk()    
-    #ThreadedWalk()
-    
+            
     for drive in drives:
+        '''Recursing on all drives'''
+        
         gtime=time()
         RecursiveAdd(drive)
+        
         if Tests.recursion_stats:
             gtime=time()-gtime
             print ("Done recursing on drive ", drive)
             print("Time: ", gtime)
-        #per-drive dump, performance same as h&h but harder to predict RAM footprint
-        '''
-        dbdict.update(fdict)
-        #dict.clear()
-    fdict=dict(fdict)'''
     
+    #Passing the generated dictionary
     try:
         queue.put((fdict, unsearched))
-        #dbdict.update(fdict)  #Values are paths
     except:
-        #dbdict=fdict
-        print ('dbm failed')
-    '''else:
-        fdict.clear()
-        fdict=None'''
-        #dbm.open(DB, 'n')
-        #del fdict        #doesn't work in 2.7
-        #except:
-            #print 'koko'  
-
-if Testing:    
-    def dict_seeker(search_list, fdict): 
-        '''for testing speed of dictionary searching methods, not in use by the app'''
-
-        RESULTS_PER_BATCH=50
-        _all=all
-        batch_counter=0
-        result_batch=[]
-        #dict_counter=len(fdict)
-        for key in fdict:    
-            filename=key.split('*')[0].lower()
-            if _all(token in filename for token in search_list):
-                result_batch.append(key)
-                batch_counter+=1 
-                #dict_counter-=1    
-            if batch_counter==RESULTS_PER_BATCH: #or not dict_counter:
-                batch_counter=0
-                yield result_batch
-                result_batch=[]
-         
-        yield result_batch       
-        yield ['**']   
-                
-        '''is_key=True
-            for token in search_list:
-            if not token in filename:
-                is_key=False
-                break
-        if is_key:
-            yield key'''
+        return fdict 
+        
 
 def TMakeSearch(fdict, squeue=None, rqueue=None):
     '''Attempt at circumventing StopIteration(), did not see speed advantage'''
     RESULTS_PER_BATCH=50
     #batch_counter=0
     
-    if whichdb(DB)=='dbhash' or 'dumb' in whichdb(DB): 
+    if whichdb(DB) in {'dbm.gnu', 'gdbm', 'dbm.ndbm', 'dbm'}:
         '''iteration is  not implemented for gdbm and (n)dbm, forced to
         pop the keys out in advance for "for key in fdict:" if any of those''' 
-        fdict=fdict 
-    else:
-        # 'dbm.gnu', 'gdbm', 'dbm.ndbm', 'dbm'
         fdict=fdict.keys()
+    else:
+        #bsddb, dumbdbm or semidbm
+        fdict=fdict
     
+    #extracting keys to a set, make his optional as the new "scorch mode"
+    if 'win' in sys.platform:  #did not see speed improvement in Linux
+        try:
+            fdict=frozenset(fdict)
+        except:
+            fdict=frozenset(fdict.keys())
+        
     search_list=None
     while True:  
         query=None
@@ -354,7 +360,13 @@ def TMakeSearch(fdict, squeue=None, rqueue=None):
             if Tests.is_query_passed:
                 print (search_list)
         except:
-            #No new query or a new database has been created and needs to be synced
+            if query:
+                # True is passed when a new database has been generated
+                # A new instance of TMakeSearch will be opened
+                break
+                
+            else:
+                #No new query or a new database is being generated
                 sleep(0.1)
                 continue
         else:
@@ -400,7 +412,7 @@ def TMakeSearch(fdict, squeue=None, rqueue=None):
 ''' includes: '''
 
 class SearchBox(Frame):
-    '''A Treeview widget on top, Entry on the bottom, using queues for
+    '''A Treeview widget on top, Entry on bottom, using queues for
      interaction with outside functions'''
    
     def __init__(self, parent=None, db=DB, fdict={}):
@@ -415,7 +427,7 @@ class SearchBox(Frame):
         self.drives=self.get_drives()
         self.start_func=StartFunc()   #platform dependent double-click response
             
-        self.results=(_ for _ in ())   #initiating query results as an empty generator
+        self.results=iter(())   #initiating query results as an empty generator
         self.total_width=self.winfo_screenwidth() #to adjust column widths relative to screen size
         #Remember scorch mode
         self.scorch=False 
@@ -445,35 +457,40 @@ class SearchBox(Frame):
         self.panel.heading(2, text='Date Modified')
         
         #--Starting geometry of the search panel
-        try:
+        try:   #start maximized
             self.panel.master.attributes('-zoomed', 1)
         except:
-            self.panel.master.state('zoomed') #start maximized
-        #Name - 2/5-----Path - 2/5-----Size -1/25-----Date -4/25 
-        self.panel_width=self.panel.winfo_width()          
-        self.panel.column('#0', width=int(self.total_width*0.4))      # '#0' is the 'Name' column
+            self.panel.master.state('zoomed') 
+         
+        self.panel_width=self.panel.winfo_width()
+        #Name - 2/5-----Path - 2/5-----Size -1/25-----Date -4/25
+        # '#0' is the 'Name' column          
+        self.panel.column('#0', width=int(self.total_width*0.4))      
         self.panel.column('Path', width=int(self.total_width*0.4))
         self.panel.column('Size', width=int(self.total_width*0.06))
         self.panel.column('Date', width=int(self.total_width*0.14))
-        #420, 350, 5, 60
         
         #--Panel font, style
         self.font=Font(family='Helvetica', size=11)
         '''TkDefaultFont - {'family': 'Segoe UI',  'overstrike': 0, 'size': 9, 
                        'slant': 'roman', 'underline': 0, 'weight': normal'}'''       
         self.style=Style()
+        
         #linespace - adjust the row height to the font, doesn't happen on its own in tkinter
         self.style.configure('SearchBox.Treeview', font=self.font, rowheight=self.font.metrics('linespace'))     
         self.panel.config(style='SearchBox.Treeview')
+        
         #alternating background colors
         self.panel.tag_configure('color1', background='gray85') #, foreground='white')
         self.panel.tag_configure('color2', background='gray90') #, foreground='white')       
-        #'dark sea green', 'wheat3', black
+        #'dark sea green', 'wheat3', 'black'
              
         #--App title and icon, currently transparent
         self.panel.master.title('Jiffy')
         self.icon=PhotoImage(height=16, width=16)
-        self.icon.blank()
+        self.icon.blank()  #transparent icon, works on all but Py35/Win
+        
+        #loading the transparent icon. black on Py35/Win
         try:
             self.master.wm_iconphoto('True', self.icon)
         except:    
@@ -488,7 +505,8 @@ class SearchBox(Frame):
          
         #--Entry line on the bottom
         self.entry_box=Entry(textvariable=self.entry_var)
-        self.entry_box.pack(side='bottom', fill='x')  #keep it as a single line on all window sizes     
+        #keep it as a single line on all window sizes  
+        self.entry_box.pack(side='bottom', fill='x')     
         
         #--Widget Bindings
         #self.master.bind('<Ctrl-Z>', self.quit)  #alternative to Alt-F4
@@ -496,7 +514,6 @@ class SearchBox(Frame):
         self.master.bind('<Control-Button-4>', self.scaleup)   
         self.master.bind('<Control-minus>', self.scaledown)
         self.master.bind('<Control-Button-5>', self.scaledown)
-        self.master.bind('<Control-MouseWheel>', self.scale_mouse)
         self.master.bind('<Control-MouseWheel>', self.scale_mouse)
         
         self.panel.bind('<Double-1>', self.doubleclick)
@@ -507,7 +524,7 @@ class SearchBox(Frame):
         self.entry_box.bind('<Button-4>', self.scroll_from_entry)
         self.entry_box.bind('<Button-5>', self.scroll_from_entry) 
         
-        self.master.bind('<F5>', self.update_database)
+        self.master.bind('<F5>', self.make_database)
         #self.master.bind('<F12>', self.scorch_mode)
         
         #--Starting up with entry box active     
@@ -535,9 +552,9 @@ class SearchBox(Frame):
     
         self.panel.yview_scroll(1, 'units')
         
-    '''The Treeview widget won't auto-adjust the row height, 
-    so requires manual resetting upon font changing'''
     def scaleup(self, event):
+        '''The Treeview widget won't auto-adjust the row height, 
+        so requires manual resetting upon font changing'''
         self.font['size']+=1
         self.style.configure('SearchBox.Treeview', rowheight=self.font.metrics('linespace')+1)
     
@@ -551,9 +568,10 @@ class SearchBox(Frame):
     def doubleclick(self, event):
         '''Invoke default app on double-click or Enter'''
            
-        #getting filename and removing '[' and ']' for folders
+        #getting file/folder name and removing '[' and ']' for folders
         selection=self.panel.item(self.panel.focus())
         filename=selection['text']
+        #remove folder indicating square brackets
         if filename[0]=='[':
             filename=filename[1:-2]
         
@@ -568,7 +586,7 @@ class SearchBox(Frame):
         self.master.destroy()
     
     ##Cheese: update_database()->is_sb_generated(), trace_results(), update_query()    
-    def update_database(self, event):
+    def make_database(self, event):
         '''Using a thread to generate the dictionary to prevent GUI freezing'''
         
         #* dbm might not be thread safe - best might be to restart TMakeSearch
@@ -577,7 +595,7 @@ class SearchBox(Frame):
         self.entry_box.icursor('end')
         
         #Resulting dicitionay will be passed via dbinint_queue
-        thread.start_new_thread(RecursiveCreateDict, (self.drives, self.dbinit_queue))
+        thread.start_new_thread(RecursiveCreateDict, (self.drives, self.dbinit_queue, self.fdict))
         
         #Wait for the dictionary to be generated
         self.is_db_generated()      
@@ -586,18 +604,14 @@ class SearchBox(Frame):
         '''Update database if available or sleep and try again'''
     
         if not self.dbinit_queue.empty():
+            #A new dictionary was passed
+            
             #retrieving new dict
-            print('here we go')
             self.newdict, self.unsearched= self.dbinit_queue.get()
-            print ('got it')
             #Messaging TMakeSearch to stop querying the dictionary
             self.db_update=True
             self.query_queue.put(None)             
             sleep(0.11)       #TMakeSearch takes 0.1s naps. Check further '''
-            print ('tmakesearch asleep')
-            #closing old dict file if one was opened, making new and updating with newdict
-            #self.fdict.clear()
-            print ('cleaned old fdict')
             
             if whichdb(self.db)==('dbhash'):
                 '''For dumbdbm, this jams the app, as does manual updating. it's
@@ -606,11 +620,12 @@ class SearchBox(Frame):
             else: 
                 for key in self.newdict:
                     self.fdict[key]=self.newdict[key]
-            print ('fdict is updated')
+            print ('fdict is created')
             self.db_update=False
             #save new database
             self.fdict.sync()
-        
+            print ('fdict synced')
+            
             #Open a new TMakeSearch with the updated database
             #thread.start_new_thread(TMakeSearch, (self.fdict, self.query_queue, self.result_queue))
             
@@ -621,6 +636,11 @@ class SearchBox(Frame):
             self.gtime=time()-self.gtime
             #to read about {}.format              #also, a label may be simpler
             self.entry_var.set('Database generation time- '+ str(self.gtime) + 's. Type to search. [F5 - Refresh Database]')
+            
+            #Pass a signal to close TMakeSearch, then reopen it
+            self.query_queue.put(True)
+            thread.start_new_thread(TMakeSearch, (self.fdict, self.query_queue, self.result_queue))
+            
             self.entry_box.icursor(0)
             #self.loading.destroy()
             self.panel.delete(*self.panel.get_children())
@@ -765,21 +785,8 @@ class SearchBox(Frame):
 def allrightythen():
     '''Windows arrangements, load GUI'''
     
-    if 'win' in sys.platform:
-        #Expand to get admin rights on Windows for USN querying
-        #windll.shell32.ShellExecuteW(None, 'runas', sys.executable, '', None, 1)       
-        try:
-            #try for DPI awareness  
-            windll.shcore.SetProcessDpiAwareness(1) 
-            if Tests.is_dpi_scale:
-                print('great DPI success')
-            #windll.shcore.GetDpiForMonitor()
-        except:
-            if Tests.is_dpi_scale:
-                print ('no dpi scaling')
-            else: 
-                pass #well, shit.
-    
+    #class.scale_display()
+    windll.shcore.SetProcessDpiAwareness(1)
     sb=SearchBox()
     sb.pack()
     mainloop()
