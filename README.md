@@ -31,7 +31,7 @@ Jiffy uses generic standard library Python functions for almost all its operatio
 -	Alt-F4 to exit.
 
 ### Windows Demo:
-![](https://github.com/h5rdly/Jiffy/blob/master/WinDemo.gif)
+![](https://github.com/h5rdly/Jiffy/blob/master/Screenshots/WinDemo.gif)
 
 ### Linux Demo:
 coming up, having some trouble with Peek
